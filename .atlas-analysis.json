@@ -1,0 +1,77 @@
+{
+  "projectType": "ai-ml",
+  "projectName": "VibeVoice",
+  "projectDescription": "An open-source family of frontier voice AI models for both text-to-speech and automatic speech recognition, supporting long-form audio, real-time streaming, and multilingual processing.",
+  "theme": "linden",
+  "primaryColor": "#646464",
+  "lightColor": "#cdcdcd",
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Models",
+            "pages": [
+              "models/overview",
+              "models/vibevoice-asr",
+              "models/vibevoice-tts",
+              "models/vibevoice-realtime"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/installation",
+              "guides/inference",
+              "guides/finetuning-asr",
+              "guides/vllm-deployment"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "reference/api",
+              "reference/configuration",
+              "reference/responsible-ai"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "60-minute single-pass long-form speech recognition (VibeVoice-ASR-7B)",
+    "Real-time streaming TTS with ~200ms first-audio latency (VibeVoice-Realtime-0.5B)",
+    "Multi-speaker long-form TTS supporting up to 4 speakers and 90-minute audio (VibeVoice-TTS-1.5B)",
+    "Multilingual support for 50+ languages in ASR",
+    "Structured rich transcription: speaker diarization, timestamps, and content (Who, When, What)",
+    "Customized hotwords for domain-specific ASR accuracy",
+    "LoRA fine-tuning support for ASR models",
+    "vLLM plugin for high-performance API serving with OpenAI-compatible endpoints",
+    "Next-token diffusion framework with continuous speech tokenizers at 7.5 Hz",
+    "Transformers-native integration via Hugging Face"
+  ],
+  "publicApiSurface": [
+    "VibeVoiceStreamingForConditionalGenerationInference",
+    "VibeVoiceStreamingConfig",
+    "VibeVoiceStreamingProcessor",
+    "VibeVoiceTokenizerProcessor",
+    "vllm_plugin.register_vibevoice",
+    "demo/vibevoice_asr_gradio_demo.py --model_path --share",
+    "demo/vibevoice_asr_inference_from_file.py --model_path --audio_files",
+    "demo/vibevoice_realtime_demo.py --model_path",
+    "demo/realtime_model_inference_from_file.py --model_path --txt_path --speaker_name",
+    "finetuning-asr/lora_finetune.py --model_path --data_dir --output_dir",
+    "finetuning-asr/inference_lora.py --base_model --lora_path --audio_file",
+    "vLLM OpenAI-compatible /v1/chat/completions endpoint"
+  ]
+}
