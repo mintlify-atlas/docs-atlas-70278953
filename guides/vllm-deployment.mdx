@@ -1,0 +1,180 @@
+---
+title: 'vLLM deployment'
+description: 'Deploy VibeVoice-ASR as a high-throughput OpenAI-compatible API service using vLLM and Docker.'
+---
+
+## Overview
+
+The VibeVoice vLLM plugin exposes VibeVoice-ASR through an OpenAI-compatible `/v1/chat/completions` endpoint with streaming support. It uses vLLM's continuous batching for high-throughput inference and requires no modifications to the vLLM source code — the plugin is registered automatically via a Python entry point when you install the package.
+
+**Key capabilities:**
+- OpenAI-compatible `/v1/chat/completions` API with streaming
+- Processes up to 60+ minutes of audio per request
+- Plugin architecture: install and run without patching vLLM
+- Configurable FFmpeg concurrency and GPU memory utilization
+
+## Installation
+
+The vLLM plugin is registered automatically when you install the VibeVoice package:
+
+```bash
+git clone https://github.com/microsoft/VibeVoice.git
+cd VibeVoice
+pip install -e .
+```
+
+The `pyproject.toml` entry point `vllm.general_plugins` maps to `vllm_plugin:register_vibevoice`, which vLLM discovers at startup without any manual configuration.
+
+## Deployment
+
+<Steps>
+
+<Step title="Clone the repository">
+
+```bash
+git clone https://github.com/microsoft/VibeVoice.git
+cd VibeVoice
+```
+
+</Step>
+
+<Step title="Launch the vLLM server">
+
+Run the server in detached (background) mode using the official vLLM Docker image:
+
+<CodeGroup>
+
+```bash Background mode (recommended)
+docker run -d --gpus all --name vibevoice-vllm \
+  --ipc=host \
+  -p 8000:8000 \
+  -e VIBEVOICE_FFMPEG_MAX_CONCURRENCY=64 \
+  -e PYTORCH_ALLOC_CONF=expandable_segments:True \
+  -v $(pwd):/app \
+  -w /app \
+  --entrypoint bash \
+  vllm/vllm-openai:v0.14.1 \
+  -c "python3 /app/vllm_plugin/scripts/start_server.py"
+```
+
+</CodeGroup>
+
+<Note>
+The `-d` flag runs the container in detached mode. Use `docker stop vibevoice-vllm` to stop the service. The model will be downloaded to the HuggingFace cache (`~/.cache/huggingface`) inside the container on first run.
+</Note>
+
+</Step>
+
+<Step title="View server logs">
+
+Monitor startup progress and request logs:
+
+```bash
+docker logs -f vibevoice-vllm
+```
+
+Wait until the log shows the server is ready before sending requests.
+
+</Step>
+
+<Step title="Test the API">
+
+Copy your audio file into the repository directory (mounted as `/app` in the container), then run one of the test scripts:
+
+```bash
+# Basic transcription
+docker exec -it vibevoice-vllm python3 vllm_plugin/tests/test_api.py /app/audio.wav
+
+# With hotwords for domain-specific terms
+docker exec -it vibevoice-vllm python3 vllm_plugin/tests/test_api.py /app/audio.wav \
+  --hotwords "Microsoft,VibeVoice"
+```
+
+```bash
+# Auto-recovery from repetition loops (recommended for long audio)
+docker exec -it vibevoice-vllm python3 vllm_plugin/tests/test_api_auto_recover.py /app/audio.wav
+
+# Auto-recovery with hotwords
+docker exec -it vibevoice-vllm python3 vllm_plugin/tests/test_api_auto_recover.py /app/audio.wav \
+  --hotwords "Microsoft,VibeVoice"
+```
+
+<Warning>
+Audio and video files must be inside the mounted directory (`$(pwd)` on the host, `/app` in the container). Copy your files to the VibeVoice folder before running tests.
+</Warning>
+
+</Step>
+
+</Steps>
+
+## Environment variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `VIBEVOICE_FFMPEG_MAX_CONCURRENCY` | `64` | Maximum number of concurrent FFmpeg processes used for audio decoding |
+| `PYTORCH_ALLOC_CONF` | `expandable_segments:True` | PyTorch memory allocator configuration. `expandable_segments:True` reduces fragmentation for long audio |
+
+## Performance tips
+
+1. **GPU memory utilization** — Pass `--gpu-memory-utilization 0.9` to `start_server.py` to allow vLLM to use up to 90% of available GPU memory, maximizing throughput on dedicated GPU instances.
+2. **Batch size** — Increase `--max-num-seqs` to handle more concurrent requests. This requires proportionally more GPU memory.
+3. **FFmpeg concurrency** — Tune `VIBEVOICE_FFMPEG_MAX_CONCURRENCY` based on the number of available CPU cores. A value of 2–4× the core count is a reasonable starting point under high request load.
+
+## Troubleshooting
+
+<AccordionGroup>
+
+<Accordion title="CUDA out of memory">
+
+Reduce GPU memory pressure by lowering one or more of the following flags:
+
+```bash
+--gpu-memory-utilization 0.8
+--max-num-seqs 16
+--max-model-len 32768
+```
+
+</Accordion>
+
+<Accordion title="Audio decoding failed">
+
+Verify that FFmpeg is present inside the container:
+
+```bash
+docker exec -it vibevoice-vllm ffmpeg -version
+```
+
+If FFmpeg is missing, install it:
+
+```bash
+docker exec -it vibevoice-vllm apt-get install -y ffmpeg
+```
+
+Also confirm that the audio file format is supported by FFmpeg (WAV, MP3, MP4, FLAC, and most common formats are supported).
+
+</Accordion>
+
+<Accordion title="Model not found">
+
+Ensure the model directory contains `config.json` and the model weight files. If tokenizer files are missing, regenerate them:
+
+```bash
+python3 vllm_plugin/scripts/generate_tokenizer.py
+```
+
+</Accordion>
+
+<Accordion title="Plugin not loaded">
+
+Verify that the package is installed and the entry point is registered:
+
+```bash
+pip show vibevoice
+pip show -f vibevoice | grep entry
+```
+
+The output should include a line referencing `vllm.general_plugins`. If not, reinstall with `pip install -e .` from the repository root.
+
+</Accordion>
+
+</AccordionGroup>

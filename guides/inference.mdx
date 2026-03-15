@@ -1,0 +1,133 @@
+---
+title: 'Inference'
+description: 'Run ASR transcription and real-time TTS inference using Gradio demos, file-based scripts, and the Python API.'
+---
+
+<Tabs>
+  <Tab title="ASR">
+
+## VibeVoice-ASR inference
+
+VibeVoice-ASR accepts up to 60 minutes of continuous audio in a single pass and outputs structured transcriptions with speaker labels, timestamps, and text content.
+
+### Launch the Gradio demo
+
+The Gradio demo provides a browser-based interface for uploading audio files and viewing transcription results interactively.
+
+```bash
+apt update && apt install ffmpeg -y
+
+python demo/vibevoice_asr_gradio_demo.py \
+  --model_path microsoft/VibeVoice-ASR \
+  --share
+```
+
+The `--share` flag generates a public Gradio link. Omit it to keep the demo local.
+
+### Inference from files
+
+Transcribe one or more audio files directly from the command line:
+
+```bash
+python demo/vibevoice_asr_inference_from_file.py \
+  --model_path microsoft/VibeVoice-ASR \
+  --audio_files /path/to/audio.wav
+```
+
+Pass multiple paths separated by spaces to transcribe several files in a single run.
+
+### Using customized hotwords
+
+Hotwords improve recognition accuracy for domain-specific terms such as proper nouns, product names, or technical vocabulary. Provide them as a comma-separated string:
+
+```bash
+python demo/vibevoice_asr_inference_from_file.py \
+  --model_path microsoft/VibeVoice-ASR \
+  --audio_files /path/to/audio.wav \
+  --hotwords "Microsoft,VibeVoice,Azure"
+```
+
+  </Tab>
+  <Tab title="Realtime TTS">
+
+## VibeVoice-Realtime inference
+
+<Note>
+Real-time performance (~200–300 ms first audible chunk) has been validated on NVIDIA T4 and Apple M4 Pro. Devices with lower inference throughput may require speed optimizations. Network latency can add additional delay to playback.
+</Note>
+
+### Launch the WebSocket demo
+
+The real-time demo starts a local WebSocket server. Open the provided URL in a browser to stream text and hear speech generated token-by-token.
+
+```bash
+python demo/vibevoice_realtime_demo.py \
+  --model_path microsoft/VibeVoice-Realtime-0.5B
+```
+
+<Tip>
+You can also try the model without a local GPU on [Google Colab](https://colab.research.google.com/github/microsoft/VibeVoice/blob/main/demo/vibevoice_realtime_colab.ipynb).
+</Tip>
+
+### Inference from files
+
+Generate speech from a plain-text file and write the result to disk:
+
+```bash
+python demo/realtime_model_inference_from_file.py \
+  --model_path microsoft/VibeVoice-Realtime-0.5B \
+  --txt_path demo/text_examples/1p_vibevoice.txt \
+  --speaker_name Carter
+```
+
+Example text files are provided under `demo/text_examples/`.
+
+### Download experimental voices
+
+Additional experimental speakers are available, including voices in nine languages (German, French, Italian, Japanese, Korean, Dutch, Polish, Portuguese, Spanish) and 11 distinct English style voices.
+
+Download them before launching the demo or running file inference:
+
+```bash
+bash demo/download_experimental_voices.sh
+```
+
+Once downloaded, pass `--speaker_name` with any of the downloaded voice names.
+
+  </Tab>
+</Tabs>
+
+## Python API
+
+You can integrate VibeVoice-Realtime directly into Python applications using the inference class and processor:
+
+```python
+from vibevoice.models.streaming_tts import (
+    VibeVoiceStreamingForConditionalGenerationInference,
+    VibeVoiceStreamingProcessor,
+)
+
+# Load model and processor
+model = VibeVoiceStreamingForConditionalGenerationInference.from_pretrained(
+    "microsoft/VibeVoice-Realtime-0.5B"
+)
+processor = VibeVoiceStreamingProcessor.from_pretrained(
+    "microsoft/VibeVoice-Realtime-0.5B"
+)
+
+# Stream audio chunks from text
+text = "Welcome to VibeVoice, a real-time text-to-speech system."
+audio_chunks = model.generate_streaming(
+    processor=processor,
+    text=text,
+    speaker_name="Carter",
+)
+
+for chunk in audio_chunks:
+    # chunk is a numpy array of audio samples at 24 kHz
+    play_or_write(chunk)
+```
+
+<Note>
+`VibeVoiceStreamingForConditionalGenerationInference` uses a windowed interleaved design: it encodes incoming text chunks incrementally while continuing diffusion-based acoustic generation from prior context. This allows the first audio chunk to be emitted before the full input is processed.
+</Note>

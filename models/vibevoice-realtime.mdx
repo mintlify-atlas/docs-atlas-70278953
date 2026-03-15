@@ -1,0 +1,158 @@
+---
+title: VibeVoice-Realtime-0.5B
+description: A lightweight 0.5B streaming TTS model with ~200 ms first-audio latency, 8K context for ~10 minutes of audio, and experimental multilingual support.
+---
+
+**VibeVoice-Realtime-0.5B** is a lightweight real-time text-to-speech model built for streaming text input and low-latency audio output. It produces the first audible audio chunk in approximately **~200 milliseconds** and supports robust long-form speech generation up to ~10 minutes from an 8K context window.
+
+<CardGroup cols={2}>
+  <Card title="Hugging Face" icon="circle-nodes" href="https://huggingface.co/microsoft/VibeVoice-Realtime-0.5B">
+    Download model weights
+  </Card>
+  <Card title="Try on Colab" icon="play" href="https://colab.research.google.com/github/microsoft/VibeVoice/blob/main/demo/vibevoice_realtime_colab.ipynb">
+    Run instantly in the browser — no GPU setup needed
+  </Card>
+</CardGroup>
+
+## What It Does
+
+VibeVoice-Realtime enables use cases where the first word of audio must arrive before the full text is known:
+
+- **LLM voice interfaces** — start speaking from the LLM's first output tokens, before the full answer is generated
+- **Live narration** — narrate streaming data feeds or subtitles with minimal delay
+- **Real-time TTS services** — serve audio over WebSocket with sub-second response
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="~200 ms First-Audio Latency" icon="clock">
+    Hardware-dependent (~200 ms on NVIDIA T4 or Apple M4 Pro). First speech chunk is generated before the full input text is available.
+  </Card>
+  <Card title="Streaming Text Input" icon="signal-stream">
+    Accepts text incrementally — new tokens can be fed while audio for earlier tokens is still being generated.
+  </Card>
+  <Card title="0.5B Parameters" icon="microchip">
+    Deployment-friendly footprint. Based on Qwen2.5-0.5B. Achieves real-time performance on consumer-grade hardware.
+  </Card>
+  <Card title="8K Context / ~10 min Audio" icon="timeline">
+    8K token context window supports approximately 10 minutes of continuous speech generation without re-conditioning.
+  </Card>
+</CardGroup>
+
+## Architecture
+
+### Interleaved Windowed Design
+
+VibeVoice-Realtime uses an **interleaved, windowed** design that enables streaming:
+
+1. Incoming text is encoded in **incremental chunks** as new tokens arrive.
+2. In parallel, the diffusion-based acoustic latent generation continues from prior context — it does not wait for the full text.
+3. Each window of text produces a corresponding window of audio latents, which are decoded and streamed to the output.
+
+This interleaved approach is what achieves the ~200 ms first-chunk latency: audio generation begins after the very first text window is processed.
+
+### Acoustic Tokenizer Only (No Semantic Tokenizer)
+
+Unlike VibeVoice-TTS-1.5B, the Realtime variant removes the semantic tokenizer entirely. Only the **acoustic tokenizer** (64-dim latent, 7.5 Hz) is used.
+
+| Component | VibeVoice-TTS-1.5B | VibeVoice-Realtime-0.5B |
+|---|---|---|
+| Acoustic tokenizer (7.5 Hz) | Yes | Yes |
+| Semantic tokenizer (7.5 Hz) | Yes | **No** |
+| LLM backbone | Qwen2.5-1.5B | Qwen2.5-0.5B |
+| Diffusion head | Yes | Yes |
+| Multi-speaker | Up to 4 | Single speaker |
+| Streaming input | No | Yes |
+
+Removing the semantic tokenizer reduces both model size and per-step latency, at the cost of multi-speaker capability and some acoustic richness.
+
+The decoder layers are split: lower Transformer layers encode text only, while upper layers (`tts_backbone_num_hidden_layers = 20`) jointly encode text and generate speech. This split allows text encoding to proceed ahead of audio generation.
+
+## Benchmark Results
+
+### Zero-Shot TTS — LibriSpeech test-clean
+
+| Model | WER (%) ↓ | Speaker Similarity ↑ |
+|---|---|---|
+| VALL-E 2 | 2.40 | 0.643 |
+| Voicebox | 1.90 | 0.662 |
+| MELLE | 2.10 | 0.625 |
+| **VibeVoice-Realtime-0.5B** | **2.00** | **0.695** |
+
+### Zero-Shot TTS — SEED test-en
+
+| Model | WER (%) ↓ | Speaker Similarity ↑ |
+|---|---|---|
+| MaskGCT | 2.62 | 0.714 |
+| Seed-TTS | 2.25 | 0.762 |
+| FireRedTTS | 3.82 | 0.460 |
+| SparkTTS | 1.98 | 0.584 |
+| CosyVoice2 | 2.57 | 0.652 |
+| **VibeVoice-Realtime-0.5B** | **2.05** | **0.633** |
+
+<Note>
+  These are short-sentence benchmarks. The model is primarily optimized for long-form speech generation, where it outperforms models tuned purely for sentence-level quality.
+</Note>
+
+## Available Speakers
+
+### English Speakers
+
+Several English voice speakers are included with the base model. Additional **11 English style voices** with distinct characteristics are available as experimental downloads.
+
+### Experimental Multilingual Speakers
+
+Nine additional language voices are provided for exploration. These have not been extensively tested — use with caution.
+
+| Language | Code |
+|---|---|
+| German | DE |
+| French | FR |
+| Italian | IT |
+| Japanese | JP |
+| Korean | KR |
+| Dutch | NL |
+| Polish | PL |
+| Portuguese | PT |
+| Spanish | ES |
+
+To download experimental voices:
+
+```bash
+bash demo/download_experimental_voices.sh
+```
+
+<Note>
+  Voice prompts are embedded in the model weights to mitigate deepfake risks and reduce first-chunk latency. Custom voice prompting is not exposed in the public release. Contact the VibeVoice team if voice customization is required for your use case.
+</Note>
+
+## Limitations
+
+<Warning>
+  **English-primary model.** Transcripts in languages other than English may produce unexpected audio output. The nine multilingual experimental speakers are provided for exploration only and have not been thoroughly validated.
+</Warning>
+
+| Limitation | Detail |
+|---|---|
+| Single speaker only | No multi-speaker support. Use VibeVoice-TTS-1.5B for multi-speaker generation. |
+| No background music/noise | The model synthesizes speech only. Background music, sound effects, and ambient noise are not supported. |
+| Short input instability | Inputs of 3 words or fewer may produce degraded or unstable output. |
+| No code or formulas | Mathematical formulas, code snippets, and uncommon symbols should be pre-processed or removed before passing to the model. |
+| Research only | Not recommended for commercial or real-world deployment without further testing. |
+
+## Resources
+
+<CardGroup cols={2}>
+  <Card title="Hugging Face Model" icon="circle-nodes" href="https://huggingface.co/microsoft/VibeVoice-Realtime-0.5B">
+    Weights, model card, and usage examples
+  </Card>
+  <Card title="Colab Demo" icon="play" href="https://colab.research.google.com/github/microsoft/VibeVoice/blob/main/demo/vibevoice_realtime_colab.ipynb">
+    Interactive notebook — try immediately
+  </Card>
+  <Card title="Models Overview" icon="table" href="/models/overview">
+    Compare all VibeVoice models
+  </Card>
+  <Card title="VibeVoice-TTS" icon="waveform-lines" href="/models/vibevoice-tts">
+    Multi-speaker long-form TTS alternative
+  </Card>
+</CardGroup>

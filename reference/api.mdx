@@ -1,0 +1,602 @@
+---
+title: API Reference
+description: Python API reference for VibeVoice — covering the streaming TTS inference class, configuration, processor, and vLLM plugin endpoint.
+---
+
+VibeVoice exposes four public classes from its top-level package plus an OpenAI-compatible HTTP endpoint via the vLLM plugin.
+
+```python
+from vibevoice import (
+    VibeVoiceStreamingForConditionalGenerationInference,
+    VibeVoiceStreamingConfig,
+    VibeVoiceStreamingProcessor,
+    VibeVoiceTokenizerProcessor,
+)
+```
+
+---
+
+## `VibeVoiceStreamingForConditionalGenerationInference`
+
+The primary inference class for running streaming text-to-speech generation. It combines a base text language model, a TTS language model backbone, a diffusion head for acoustic latent sampling, and an acoustic tokenizer decoder. Only batch size 1 is supported at inference time.
+
+This class is registered with `AutoModelForCausalLM` and can be loaded via:
+
+```python
+from transformers import AutoModelForCausalLM
+from vibevoice import VibeVoiceStreamingConfig  # registers the model type
+
+model = AutoModelForCausalLM.from_pretrained(
+    "microsoft/VibeVoice-Realtime-0.5B",
+    torch_dtype="bfloat16",
+    device_map="cuda",
+)
+```
+
+### Constructor
+
+<ParamField path="config" type="VibeVoiceStreamingConfig" required>
+  The model configuration. Passed automatically when using `from_pretrained`.
+</ParamField>
+
+### Key Methods
+
+#### `generate`
+
+Runs the full streaming TTS pipeline: windowed text prefill → incremental LM and TTS LM updates → interleaved diffusion-based speech latent sampling → acoustic decoding to audio waveform.
+
+```python
+output = model.generate(
+    inputs=input_ids,
+    tts_text_ids=tts_text_ids,
+    tokenizer=tokenizer,
+    tts_lm_input_ids=tts_lm_input_ids,
+    tts_lm_attention_mask=tts_lm_attention_mask,
+    all_prefilled_outputs=prefilled_outputs,
+    audio_streamer=streamer,   # optional
+    cfg_scale=3.0,
+    return_speech=True,
+    max_new_tokens=2048,
+)
+# output.speech_outputs[0]  → torch.Tensor waveform
+```
+
+<ParamField path="inputs" type="torch.Tensor | None">
+  Input token IDs for the base LM prefill.
+</ParamField>
+
+<ParamField path="generation_config" type="GenerationConfig | None">
+  HuggingFace `GenerationConfig`. When `None`, a default config is built from the tokenizer's special tokens.
+</ParamField>
+
+<ParamField path="audio_streamer" type="AudioStreamer | AsyncAudioStreamer | None">
+  If provided, audio chunks are emitted incrementally during generation via `streamer.put()`. The streamer is closed with `streamer.end()` when generation finishes or stops.
+</ParamField>
+
+<ParamField path="tts_text_ids" type="torch.LongTensor" required>
+  Full text token IDs to stream into the TTS backbone in windows of 5 tokens at a time.
+</ParamField>
+
+<ParamField path="return_speech" type="bool" default="True">
+  When `False`, skips concatenating audio chunks and returns `None` for `speech_outputs`.
+</ParamField>
+
+<ParamField path="cfg_scale" type="float" default="1.0">
+  Classifier-free guidance scale applied during speech diffusion sampling. Higher values increase adherence to the conditioning at the cost of diversity.
+</ParamField>
+
+<ParamField path="stop_check_fn" type="Callable[[], bool] | None">
+  An optional external early-stop hook. If it returns `True`, generation halts and any open `audio_streamer` is closed.
+</ParamField>
+
+**Returns** — `VibeVoiceGenerationOutput`:
+
+<ResponseField name="sequences" type="torch.LongTensor">
+  Final TTS LM token IDs of shape `(1, sequence_length)`.
+</ResponseField>
+
+<ResponseField name="speech_outputs" type="List[torch.FloatTensor] | None">
+  List of concatenated audio waveform tensors, one per batch entry. `None` when `return_speech=False` or no audio was generated.
+</ResponseField>
+
+<ResponseField name="reach_max_step_sample" type="torch.BoolTensor">
+  Boolean tensor indicating which batch entries were stopped by the maximum length limit rather than the EOS classifier.
+</ResponseField>
+
+---
+
+#### `forward_lm`
+
+Single forward pass through the base text language model. Used internally by `generate` for the incremental text-encoding step.
+
+```python
+outputs = model.forward_lm(
+    input_ids=input_ids,
+    attention_mask=attention_mask,
+    past_key_values=past_kv,
+    use_cache=True,
+    return_dict=True,
+)
+# outputs.last_hidden_state, outputs.past_key_values
+```
+
+<ParamField path="input_ids" type="torch.LongTensor">
+  Token IDs of shape `(batch, seq_len)`.
+</ParamField>
+
+<ParamField path="attention_mask" type="torch.Tensor | None">
+  Attention mask of shape `(batch, seq_len)`.
+</ParamField>
+
+<ParamField path="past_key_values" type="tuple | DynamicCache | None">
+  KV cache from previous steps. Compatible with transformers ≥ 4.57.
+</ParamField>
+
+<ParamField path="use_cache" type="bool | None">
+  Whether to return and consume KV cache.
+</ParamField>
+
+**Returns** — `BaseModelOutputWithPast` with `last_hidden_state` and `past_key_values`.
+
+---
+
+#### `forward_tts_lm`
+
+Single forward pass through the TTS language model backbone. Takes the base LM hidden states and a text/speech type mask to produce hidden states used for diffusion conditioning, plus an EOS logit.
+
+<ParamField path="lm_last_hidden_state" type="torch.FloatTensor" required>
+  Hidden states from the base LM of shape `(batch, window, hidden_size)`. Spliced into the tail of the TTS LM's embedding sequence.
+</ParamField>
+
+<ParamField path="tts_text_masks" type="torch.BoolTensor" required>
+  Shape `(batch, 1)`. `1` marks the current position as a text token; `0` marks it as a speech token. Controls the type embedding added to inputs.
+</ParamField>
+
+**Returns** — `VibeVoiceCausalLMOutputWithPast` with `logits` (EOS binary score), `last_hidden_state`, and `past_key_values`.
+
+---
+
+#### `sample_speech_tokens`
+
+Runs DDPM diffusion sampling to produce a single acoustic latent vector conditioned on TTS LM hidden states.
+
+```python
+latent = model.sample_speech_tokens(
+    condition=positive_hidden,
+    neg_condition=negative_hidden,
+    cfg_scale=3.0,
+)
+# latent shape: (1, acoustic_vae_dim)
+```
+
+<ParamField path="condition" type="torch.FloatTensor" required>
+  Positive conditioning vector from the TTS LM.
+</ParamField>
+
+<ParamField path="neg_condition" type="torch.FloatTensor" required>
+  Negative (unconditional) conditioning vector for classifier-free guidance.
+</ParamField>
+
+<ParamField path="cfg_scale" type="float" default="3.0">
+  Guidance scale. `1.0` disables classifier-free guidance.
+</ParamField>
+
+---
+
+#### `set_speech_tokenizers`
+
+Attach or replace the acoustic tokenizer used for decoding latents to waveforms.
+
+```python
+model.set_speech_tokenizers(acoustic_tokenizer=my_tokenizer)
+```
+
+<ParamField path="acoustic_tokenizer" type="nn.Module | None">
+  Acoustic tokenizer module. Pass `None` to clear.
+</ParamField>
+
+---
+
+#### `set_ddpm_inference_steps`
+
+Override the number of DDPM denoising steps used in `sample_speech_tokens`.
+
+<ParamField path="num_steps" type="int | None">
+  Number of inference steps. Falls back to `config.diffusion_head_config.ddpm_num_inference_steps` when `None`.
+</ParamField>
+
+---
+
+## `VibeVoiceStreamingConfig`
+
+Configuration class for `VibeVoiceStreamingForConditionalGenerationInference`. Extends HuggingFace `PretrainedConfig` and composes three sub-configs.
+
+```python
+from vibevoice import VibeVoiceStreamingConfig
+
+config = VibeVoiceStreamingConfig.from_pretrained("microsoft/VibeVoice-Realtime-0.5B")
+print(config.tts_backbone_num_hidden_layers)  # 20
+print(config.decoder_config.num_hidden_layers)
+```
+
+<ParamField path="acoustic_tokenizer_config" type="VibeVoiceAcousticTokenizerConfig | dict | None" default="VibeVoiceAcousticTokenizerConfig()">
+  Configuration for the acoustic VAE tokenizer. Accepts an instance, a plain dict (must include `model_type: vibevoice_acoustic_tokenizer`), or `None` to use defaults.
+</ParamField>
+
+<ParamField path="decoder_config" type="Qwen2Config | dict | None" default="Qwen2Config()">
+  Configuration for the Qwen2-based decoder language model. Only `model_type: qwen2` is supported when passing a dict.
+</ParamField>
+
+<ParamField path="diffusion_head_config" type="VibeVoiceDiffusionHeadConfig | dict | None" default="VibeVoiceDiffusionHeadConfig()">
+  Configuration for the diffusion prediction head.
+</ParamField>
+
+<ParamField path="tts_backbone_num_hidden_layers" type="int" default="20">
+  Number of upper Transformer layers in the decoder that participate in both text encoding and speech generation. The lower layers are used for text-only encoding.
+</ParamField>
+
+### Properties
+
+<ResponseField name="num_hidden_layers" type="int">
+  Proxies `decoder_config.num_hidden_layers`. Required for transformers ≥ 4.57 cache compatibility.
+</ResponseField>
+
+<ResponseField name="acoustic_vae_dim" type="int">
+  Derived from `acoustic_tokenizer_config.vae_dim` (default `64`). Determines the dimensionality of acoustic latent vectors.
+</ResponseField>
+
+---
+
+## `VibeVoiceStreamingProcessor`
+
+A combined tokenizer + audio processor for the streaming TTS model. Wraps a `VibeVoiceTextTokenizerFast` and a `VibeVoiceTokenizerProcessor` into a single object.
+
+```python
+from vibevoice import VibeVoiceStreamingProcessor
+
+processor = VibeVoiceStreamingProcessor.from_pretrained(
+    "microsoft/VibeVoice-Realtime-0.5B"
+)
+```
+
+### Constructor
+
+<ParamField path="tokenizer" type="VibeVoiceTextTokenizer | VibeVoiceTextTokenizerFast | None">
+  Text tokenizer. Loaded automatically by `from_pretrained`.
+</ParamField>
+
+<ParamField path="audio_processor" type="VibeVoiceTokenizerProcessor | None">
+  Audio feature extractor. Loaded automatically by `from_pretrained`.
+</ParamField>
+
+<ParamField path="speech_tok_compress_ratio" type="int" default="3200">
+  Compression ratio used to compute the number of acoustic VAE tokens from raw sample counts.
+</ParamField>
+
+<ParamField path="db_normalize" type="bool" default="True">
+  Whether to apply dB FS normalization to audio inputs before processing.
+</ParamField>
+
+### `from_pretrained`
+
+Load a processor from a local directory or Hugging Face Hub model ID.
+
+```python
+processor = VibeVoiceStreamingProcessor.from_pretrained(
+    "microsoft/VibeVoice-Realtime-0.5B",
+    language_model_pretrained_name="Qwen/Qwen2.5-1.5B",  # optional override
+)
+```
+
+<ParamField path="pretrained_model_name_or_path" type="str | os.PathLike" required>
+  Model ID on the Hugging Face Hub or path to a local directory containing `preprocessor_config.json`.
+</ParamField>
+
+### `process_input_with_cached_prompt`
+
+The primary method for preparing inputs at inference time when using a cached voice prompt (KV cache).
+
+```python
+batch = processor.process_input_with_cached_prompt(
+    text="Hello, this is a streaming TTS test.",
+    cached_prompt=cached_prompt_dict,
+    return_tensors="pt",
+)
+# batch.input_ids, batch.tts_lm_input_ids, batch.tts_text_ids, ...
+```
+
+<ParamField path="text" type="str | None">
+  The text script to synthesize.
+</ParamField>
+
+<ParamField path="cached_prompt" type="dict | None">
+  Dictionary containing pre-computed KV cache outputs for the voice prompt. Must have keys `lm` and `tts_lm`, each holding a dict with `last_hidden_state`.
+</ParamField>
+
+<ParamField path="padding" type="bool | str | PaddingStrategy" default="True">
+  Padding strategy forwarded to the internal batch encoder.
+</ParamField>
+
+<ParamField path="return_tensors" type="str | None">
+  `"pt"` to return `torch.Tensor` objects. `None` returns plain Python lists.
+</ParamField>
+
+**Returns** — `BatchEncoding` with the following fields:
+
+<ResponseField name="input_ids" type="torch.LongTensor">
+  Pseudo token IDs for the base LM (filled with pad tokens to match the cached prompt length).
+</ResponseField>
+
+<ResponseField name="attention_mask" type="torch.LongTensor">
+  Attention mask for `input_ids`.
+</ResponseField>
+
+<ResponseField name="tts_lm_input_ids" type="torch.LongTensor">
+  Pseudo token IDs for the TTS LM.
+</ResponseField>
+
+<ResponseField name="tts_lm_attention_mask" type="torch.LongTensor">
+  Attention mask for `tts_lm_input_ids`.
+</ResponseField>
+
+<ResponseField name="tts_text_ids" type="torch.LongTensor">
+  Actual text token IDs that will be streamed into the TTS backbone in windows during `generate`.
+</ResponseField>
+
+<ResponseField name="speech_tensors" type="torch.FloatTensor | None">
+  Padded speech waveform tensors if voice samples are present, otherwise `None`.
+</ResponseField>
+
+<ResponseField name="speech_masks" type="torch.BoolTensor | None">
+  Boolean masks over the acoustic VAE token length dimension.
+</ResponseField>
+
+<ResponseField name="speech_input_mask" type="torch.BoolTensor">
+  Positional mask indicating which sequence positions correspond to speech tokens.
+</ResponseField>
+
+### `save_audio`
+
+Convenience wrapper around `VibeVoiceTokenizerProcessor.save_audio`.
+
+```python
+processor.save_audio(output.speech_outputs[0], output_path="output.wav")
+```
+
+<ParamField path="audio" type="torch.Tensor | np.ndarray | List">
+  Audio data of shape `(B, C, T)`, `(B, T)`, or `(T)`. A list of tensors/arrays is also accepted.
+</ParamField>
+
+<ParamField path="output_path" type="str" default="output.wav">
+  Save path. For batch inputs, treated as a directory; files are named with `batch_prefix` + index.
+</ParamField>
+
+<ParamField path="sampling_rate" type="int | None">
+  Sampling rate for the WAV file. Defaults to the processor's `sampling_rate` (24000).
+</ParamField>
+
+<ParamField path="normalize" type="bool" default="False">
+  Peak-normalize audio to ±1 before saving.
+</ParamField>
+
+---
+
+## `VibeVoiceTokenizerProcessor`
+
+Audio feature extractor for VibeVoice models. Handles format conversion, mono downmix, optional dB normalization, and file loading. Extends HuggingFace `FeatureExtractionMixin`.
+
+```python
+from vibevoice import VibeVoiceTokenizerProcessor
+
+processor = VibeVoiceTokenizerProcessor(
+    sampling_rate=24000,
+    normalize_audio=True,
+    target_dB_FS=-25,
+)
+result = processor("audio.wav", return_tensors="pt")
+# result["audio"]  → torch.Tensor of shape (1, 1, T)
+```
+
+### Constructor
+
+<ParamField path="sampling_rate" type="int" default="24000">
+  Expected sampling rate of input audio. Inputs at a different rate will trigger a warning; they are not automatically resampled.
+</ParamField>
+
+<ParamField path="normalize_audio" type="bool" default="True">
+  Whether to apply dB FS normalization via `AudioNormalizer`.
+</ParamField>
+
+<ParamField path="target_dB_FS" type="float" default="-25">
+  Target loudness in dB FS used by `AudioNormalizer`.
+</ParamField>
+
+<ParamField path="eps" type="float" default="1e-6">
+  Small constant for numerical stability in normalization.
+</ParamField>
+
+### `__call__`
+
+<ParamField path="audio" type="str | np.ndarray | List[float] | List[np.ndarray] | List[str]" required>
+  Audio input. Accepted formats:
+  - `str` — path to `.wav`, `.mp3`, `.flac`, `.m4a`, `.ogg`, `.pt`, or `.npy`
+  - `np.ndarray` — raw waveform array
+  - `List[str]` — batch of file paths
+  - `List[np.ndarray]` — batch of waveform arrays
+</ParamField>
+
+<ParamField path="sampling_rate" type="int | None">
+  Sampling rate of the provided audio. Only used for validation; does not trigger resampling.
+</ParamField>
+
+<ParamField path="return_tensors" type="str | None">
+  `"pt"` returns a `torch.Tensor`; `"np"` returns a `numpy.ndarray`; `None` returns a raw list.
+</ParamField>
+
+**Returns** — `dict` with key `"audio"` containing the processed waveform tensor of shape `(1, 1, T)` for single inputs or `(B, 1, T)` for batches.
+
+### `preprocess_audio`
+
+Legacy convenience method. Accepts a file path or array and returns a processed `np.ndarray`. `__call__` is preferred.
+
+### `save_audio`
+
+Save a waveform tensor or array to a WAV file using `soundfile`.
+
+<ParamField path="audio" type="torch.Tensor | np.ndarray | List" required>
+  Audio data. Shape `(B, C, T)`, `(B, T)`, or `(T)`.
+</ParamField>
+
+<ParamField path="output_path" type="str" default="output.wav">
+  File path or directory (for batch saves).
+</ParamField>
+
+<ParamField path="sampling_rate" type="int | None">
+  WAV sample rate. Defaults to `self.sampling_rate`.
+</ParamField>
+
+<ParamField path="normalize" type="bool" default="False">
+  Peak-normalize to ±1 before writing.
+</ParamField>
+
+<ParamField path="batch_prefix" type="str" default="audio_">
+  Filename prefix used for numbered batch outputs (e.g., `audio_0.wav`, `audio_1.wav`).
+</ParamField>
+
+**Returns** `List[str]` — paths to the saved files.
+
+---
+
+## vLLM Plugin — OpenAI-Compatible ASR Endpoint
+
+The VibeVoice vLLM plugin exposes the ASR model as an OpenAI-compatible `POST /v1/chat/completions` endpoint. It is deployed via the official vLLM Docker image — no vLLM source modifications are required.
+
+### Starting the server
+
+```bash
+docker run -d --gpus all --name vibevoice-vllm \
+  --ipc=host \
+  -p 8000:8000 \
+  -e VIBEVOICE_FFMPEG_MAX_CONCURRENCY=64 \
+  -e PYTORCH_ALLOC_CONF=expandable_segments:True \
+  -v $(pwd):/app \
+  -w /app \
+  --entrypoint bash \
+  vllm/vllm-openai:v0.14.1 \
+  -c "python3 /app/vllm_plugin/scripts/start_server.py"
+```
+
+### `POST /v1/chat/completions`
+
+Transcribes audio provided as a base64-encoded data URL inside a multimodal chat message.
+
+**Request format:**
+
+```json
+{
+  "model": "vibevoice",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a helpful assistant that transcribes audio input into text output in JSON format."
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "audio_url",
+          "audio_url": {
+            "url": "data:audio/wav;base64,<BASE64_ENCODED_AUDIO>"
+          }
+        },
+        {
+          "type": "text",
+          "text": "This is a 120.5 seconds audio, with extra info: Microsoft,VibeVoice\n\nPlease transcribe it with these keys: Start time, End time, Speaker ID, Content"
+        }
+      ]
+    }
+  ],
+  "max_tokens": 32768,
+  "temperature": 0.0,
+  "stream": true,
+  "top_p": 1.0
+}
+```
+
+**Request fields:**
+
+<ParamField path="model" type="string" required>
+  Must be `"vibevoice"`.
+</ParamField>
+
+<ParamField path="messages[].content[].audio_url.url" type="string">
+  Audio provided as a data URL: `data:<mime>;base64,<bytes>`. Supported MIME types: `audio/wav`, `audio/mpeg`, `audio/mp4`, `audio/flac`, `audio/ogg`, `video/mp4`. Alternatively the vLLM server accepts a file path accessible inside the container.
+</ParamField>
+
+<ParamField path="messages[].content[].text" type="string">
+  Prompt text describing the audio duration and transcription instructions. Include `with extra info: <terms>` to enable hotword-guided recognition (comma-separated).
+</ParamField>
+
+<ParamField path="max_tokens" type="integer" default="32768">
+  Maximum number of output tokens. Set higher for long audio.
+</ParamField>
+
+<ParamField path="temperature" type="float" default="0.0">
+  Sampling temperature. Use `0.0` for deterministic transcription.
+</ParamField>
+
+<ParamField path="stream" type="boolean" default="false">
+  When `true`, tokens are streamed via server-sent events in the standard OpenAI `data: {...}` format.
+</ParamField>
+
+**Response fields:**
+
+<ResponseField name="choices[].message.content" type="string">
+  Transcription text. For the default structured prompt, this is a JSON-formatted result with `Start time`, `End time`, `Speaker ID`, and `Content` fields per segment.
+</ResponseField>
+
+<ResponseField name="choices[].delta.content" type="string">
+  Incremental transcription text when streaming is enabled.
+</ResponseField>
+
+### Environment variables
+
+<ParamField path="VIBEVOICE_FFMPEG_MAX_CONCURRENCY" type="integer" default="64">
+  Maximum number of concurrent FFmpeg processes used for audio decoding. Tune based on available CPU cores.
+</ParamField>
+
+<ParamField path="PYTORCH_ALLOC_CONF" type="string" default="expandable_segments:True">
+  PyTorch memory allocator configuration. `expandable_segments:True` reduces fragmentation for long-audio workloads.
+</ParamField>
+
+### Python client example
+
+```python
+import base64, requests
+
+with open("meeting.wav", "rb") as f:
+    audio_b64 = base64.b64encode(f.read()).decode()
+
+response = requests.post(
+    "http://localhost:8000/v1/chat/completions",
+    json={
+        "model": "vibevoice",
+        "messages": [
+            {
+                "role": "system",
+                "content": "You are a helpful assistant that transcribes audio input into text output in JSON format."
+            },
+            {
+                "role": "user",
+                "content": [
+                    {"type": "audio_url", "audio_url": {"url": f"data:audio/wav;base64,{audio_b64}"}},
+                    {"type": "text", "text": "This is a 60.0 seconds audio, please transcribe it with these keys: Start time, End time, Speaker ID, Content"}
+                ]
+            }
+        ],
+        "max_tokens": 32768,
+        "temperature": 0.0,
+    },
+)
+print(response.json()["choices"][0]["message"]["content"])
+```

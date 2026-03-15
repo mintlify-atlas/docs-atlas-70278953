@@ -1,0 +1,76 @@
+---
+title: "Introduction"
+description: "VibeVoice is an open-source family of frontier voice AI models for text-to-speech and automatic speech recognition."
+---
+
+## What is VibeVoice?
+
+VibeVoice is a family of open-source frontier voice AI models from Microsoft Research, covering both **Text-to-Speech (TTS)** and **Automatic Speech Recognition (ASR)**. The models are built around a core innovation: continuous speech tokenizers operating at an ultra-low frame rate of **7.5 Hz**, enabling efficient processing of long audio sequences while preserving fidelity.
+
+VibeVoice employs a [next-token diffusion](https://arxiv.org/abs/2412.08635) framework that combines a Large Language Model (LLM) to understand textual context with a diffusion head to generate high-fidelity acoustic details.
+
+## Model Family
+
+<CardGroup cols={3}>
+  <Card title="VibeVoice-ASR" icon="microphone" href="/models/vibevoice-asr">
+    7B parameter speech recognition model. Handles 60-minute long-form audio in a single pass with speaker diarization, timestamps, and 50+ language support.
+  </Card>
+  <Card title="VibeVoice-TTS" icon="waveform" href="/models/vibevoice-tts">
+    1.5B parameter long-form multi-speaker TTS. Synthesizes up to 90 minutes with up to 4 distinct speakers and expressive multilingual speech.
+  </Card>
+  <Card title="VibeVoice-Realtime" icon="bolt" href="/models/vibevoice-realtime">
+    0.5B parameter streaming TTS. Achieves ~200ms first-audio latency with real-time text input, ideal for live applications.
+  </Card>
+</CardGroup>
+
+## Key Capabilities
+
+<CardGroup cols={2}>
+  <Card title="60-minute single-pass ASR" icon="clock">
+    Process up to 60 minutes of continuous audio within a 64K token context window, maintaining speaker consistency and semantic coherence.
+  </Card>
+  <Card title="Rich transcription output" icon="list">
+    Jointly performs ASR, speaker diarization, and timestamping — producing structured output of who said what and when.
+  </Card>
+  <Card title="Real-time streaming TTS" icon="signal-stream">
+    Start generating speech from the first tokens of text input, enabling seamless integration with streaming LLM outputs.
+  </Card>
+  <Card title="Multilingual support" icon="globe">
+    ASR supports 50+ languages natively with code-switching. TTS covers English, Chinese, and experimental multilingual voices.
+  </Card>
+  <Card title="LoRA fine-tuning" icon="sliders">
+    Fine-tune VibeVoice-ASR on custom domains with Low-Rank Adaptation using provided training scripts.
+  </Card>
+  <Card title="vLLM deployment" icon="server">
+    Deploy ASR as a high-performance OpenAI-compatible API using the included vLLM plugin — no source modifications required.
+  </Card>
+</CardGroup>
+
+## Model Weights
+
+| Model | Parameters | Hugging Face | Status |
+|-------|-----------|--------------|--------|
+| VibeVoice-ASR | 7B | [microsoft/VibeVoice-ASR](https://huggingface.co/microsoft/VibeVoice-ASR) | Available |
+| VibeVoice-TTS | 1.5B | [microsoft/VibeVoice-1.5B](https://huggingface.co/microsoft/VibeVoice-1.5B) | Available |
+| VibeVoice-Realtime | 0.5B | [microsoft/VibeVoice-Realtime-0.5B](https://huggingface.co/microsoft/VibeVoice-Realtime-0.5B) | Available |
+
+## Quick Links
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get running with VibeVoice in minutes.
+  </Card>
+  <Card title="Installation Guide" icon="download" href="/guides/installation">
+    Detailed installation instructions for all models.
+  </Card>
+  <Card title="ASR Playground" icon="play" href="https://aka.ms/vibevoice-asr">
+    Try VibeVoice-ASR live in the browser.
+  </Card>
+  <Card title="Colab Notebook" icon="laptop-code" href="https://colab.research.google.com/github/microsoft/VibeVoice/blob/main/demo/VibeVoice_colab.ipynb">
+    Run VibeVoice-Realtime directly in Google Colab.
+  </Card>
+</CardGroup>
+
+<Warning>
+VibeVoice is intended for **research and development purposes only**. We do not recommend using it in commercial or real-world applications without further testing. Please review the [Responsible AI guidelines](/reference/responsible-ai) before using these models.
+</Warning>

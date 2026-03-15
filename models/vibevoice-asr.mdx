@@ -1,0 +1,120 @@
+---
+title: VibeVoice-ASR-7B
+description: A 7B-parameter unified speech recognition model for 60-minute long-form audio with speaker diarization, timestamps, and support for 50+ languages.
+---
+
+**VibeVoice-ASR-7B** is a unified speech-to-text model that handles up to 60 minutes of continuous audio in a single pass, producing structured transcriptions with speaker attribution, timestamps, and content — all jointly in one inference call.
+
+<CardGroup cols={2}>
+  <Card title="Hugging Face" icon="circle-nodes" href="https://huggingface.co/microsoft/VibeVoice-ASR">
+    Download model weights and use via Transformers
+  </Card>
+  <Card title="Live Playground" icon="play" href="https://aka.ms/vibevoice-asr">
+    Try VibeVoice-ASR in the browser without any setup
+  </Card>
+</CardGroup>
+
+## What It Does
+
+VibeVoice-ASR performs three tasks simultaneously in a single forward pass:
+
+- **Who** — Speaker diarization: which speaker said each segment
+- **When** — Timestamping: when each segment starts and ends
+- **What** — ASR: the transcribed text content
+
+This joint approach avoids the error accumulation that occurs when running separate ASR, diarization, and alignment pipelines in sequence.
+
+## Key Features
+
+<AccordionGroup>
+  <Accordion title="60-Minute Single-Pass Processing">
+    Unlike conventional ASR models that slice audio into short chunks (typically 30 seconds), VibeVoice-ASR accepts up to **60 minutes** of continuous audio within a 64K token context window. Global context is preserved across the entire recording, ensuring consistent speaker tracking and semantic coherence throughout an hour-long meeting or interview.
+  </Accordion>
+  <Accordion title="Customized Hotwords">
+    Users can supply domain-specific hotwords — proper names, technical terminology, or product names — that guide the recognition process. This significantly improves accuracy on specialized content where out-of-vocabulary terms would otherwise be misrecognized.
+  </Accordion>
+  <Accordion title="Rich Transcription (Who / When / What)">
+    The model jointly performs ASR, diarization, and timestamping in a single pass. Output is a structured transcript indicating which speaker said what and at what time, without requiring a separate alignment step.
+  </Accordion>
+  <Accordion title="50+ Languages with Code-Switching">
+    VibeVoice-ASR natively supports over 50 languages with no explicit language selection required. It also handles code-switching — mid-utterance transitions between languages — within and across speakers.
+  </Accordion>
+</AccordionGroup>
+
+## Architecture
+
+VibeVoice-ASR-7B is built on a Qwen2.5-7B decoder and uses two continuous speech tokenizers:
+
+- **Acoustic tokenizer** — encodes raw waveform details into a 64-dimensional continuous latent, operating at **7.5 Hz**
+- **Semantic tokenizer** — encodes higher-level linguistic content into a 128-dimensional continuous latent, also at **7.5 Hz**
+
+The ultra-low 7.5 Hz frame rate is the key to fitting 60 minutes of audio within the model's 64K token context window. At this rate, one hour of audio produces roughly 27,000 frames — well within budget.
+
+The decoder autoregressively generates structured text from these audio representations. There is no diffusion head; generation is purely text-autoregressive over speaker labels, timestamps, and transcribed words.
+
+<Note>
+  VibeVoice-ASR was integrated into Hugging Face Transformers in v5.3.0 (released 2026-03-06), enabling direct use via the `transformers` library.
+</Note>
+
+## Evaluation Results
+
+Metrics: **DER** (Diarization Error Rate, lower is better), **cpWER** (Concatenated minimum-Permutation WER, lower is better), **tcpWER** (Time-constrained cpWER, lower is better), **WER** (Word Error Rate, lower is better).
+
+### Multilingual Benchmark (MLC-Challenge)
+
+| Language | DER (%) ↓ | cpWER (%) ↓ | tcpWER (%) ↓ | WER (%) ↓ |
+|---|---|---|---|---|
+| English | 4.28 | 11.48 | 13.02 | 7.99 |
+| French | 3.80 | 18.80 | 19.64 | 15.21 |
+| German | 1.04 | 17.10 | 17.26 | 16.30 |
+| Italian | 2.08 | 15.76 | 15.91 | 13.91 |
+| Japanese | 0.82 | 15.33 | 15.41 | 14.69 |
+| Korean | 4.52 | 15.35 | 16.07 | 9.65 |
+| Portuguese | 7.98 | 29.91 | 31.65 | 21.54 |
+| Russian | 0.90 | 12.94 | 12.98 | 12.40 |
+| Spanish | 2.67 | 10.51 | 11.71 | 8.04 |
+| Thai | 4.09 | 14.91 | 15.57 | 13.61 |
+| Vietnamese | 0.16 | 14.57 | 14.57 | 14.43 |
+| **Average** | **3.42** | **14.81** | **15.66** | **12.07** |
+
+### Multi-Party Meeting Benchmarks
+
+| Dataset | Language | DER (%) ↓ | cpWER (%) ↓ | tcpWER (%) ↓ | WER (%) ↓ |
+|---|---|---|---|---|---|
+| AISHELL-4 | Chinese | 6.77 | 24.99 | 25.35 | 21.40 |
+| AMI-IHM | English | 11.92 | 20.41 | 20.82 | 18.81 |
+| AMI-SDM | English | 13.43 | 28.82 | 29.80 | 24.65 |
+| AliMeeting | Chinese | 10.92 | 29.33 | 29.51 | 27.40 |
+
+## Language Distribution
+
+VibeVoice-ASR supports **50+ languages** with no explicit language selection needed. The model automatically detects the spoken language and can handle code-switching within utterances. Coverage includes major European, Asian, and other world languages. Refer to the [language distribution chart](https://github.com/microsoft/VibeVoice/blob/main/Figures/language_distribution_horizontal.png) in the repository for the full breakdown.
+
+## LoRA Finetuning
+
+LoRA (Low-Rank Adaptation) finetuning is supported for domain adaptation. This allows you to adapt the model to specialized vocabularies, accents, or recording conditions without full fine-tuning.
+
+<Tip>
+  The finetuning code is available in the [finetuning-asr](https://github.com/microsoft/VibeVoice/tree/main/finetuning-asr) directory of the repository.
+</Tip>
+
+## vLLM Inference
+
+For high-throughput production deployments, VibeVoice-ASR supports vLLM for faster inference with continuous batching.
+
+## Resources
+
+<CardGroup cols={2}>
+  <Card title="Hugging Face Model" icon="circle-nodes" href="https://huggingface.co/microsoft/VibeVoice-ASR">
+    Weights, model card, and usage examples
+  </Card>
+  <Card title="ASR Playground" icon="play" href="https://aka.ms/vibevoice-asr">
+    Browser-based demo — no setup required
+  </Card>
+  <Card title="Technical Report" icon="file-lines" href="https://arxiv.org/pdf/2601.18184">
+    ArXiv paper with full evaluation details
+  </Card>
+  <Card title="Models Overview" icon="table" href="/models/overview">
+    Compare all VibeVoice models
+  </Card>
+</CardGroup>

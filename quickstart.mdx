@@ -1,80 +1,217 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get VibeVoice running in minutes — from installation to your first transcription or synthesized speech.
 ---
 
-## Get started in three steps
+VibeVoice is a family of open-source frontier voice AI models. This guide gets you from zero to a working demo as fast as possible. Choose the path that matches your goal:
 
-Get your documentation site running locally and make your first customization.
+- **ASR path** — transcribe long-form audio with speaker diarization and timestamps
+- **Realtime TTS path** — stream text and hear synthesized speech in ~200 ms
 
-### Step 1: Set up your local environment
+## Prerequisites
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+<Warning>
+VibeVoice requires a CUDA-capable NVIDIA GPU. CPU-only inference is not supported. An NVIDIA T4 or better is recommended for real-time TTS performance.
+</Warning>
 
-### Step 2: Deploy your changes
+- Python 3.9 or higher
+- NVIDIA GPU with CUDA support
+- Docker (strongly recommended for managing the CUDA environment)
+- `git` and `ffmpeg` installed on your system
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+## Installation
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+<Steps>
+  <Step title="Launch the NVIDIA PyTorch container">
+    Using the official NVIDIA Deep Learning Container ensures a consistent CUDA environment and avoids driver compatibility issues.
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+    <Tabs>
+      <Tab title="ASR">
+        ```bash
+        # NVIDIA PyTorch Container 24.07–25.12 verified
+        sudo docker run --privileged --net=host --ipc=host \
+          --ulimit memlock=-1:-1 --ulimit stack=-1:-1 \
+          --gpus all --rm -it \
+          nvcr.io/nvidia/pytorch:25.12-py3
+        ```
+      </Tab>
+      <Tab title="Realtime TTS">
+        ```bash
+        # NVIDIA PyTorch Container 24.07 / 24.10 / 24.12 verified
+        sudo docker run --privileged --net=host --ipc=host \
+          --ulimit memlock=-1:-1 --ulimit stack=-1:-1 \
+          --gpus all --rm -it \
+          nvcr.io/nvidia/pytorch:24.07-py3
+        ```
+      </Tab>
+    </Tabs>
 
-### Step 3: Go live
+    <Note>
+      If your container does not include Flash Attention, install it manually after the container starts:
+      ```bash
+      pip install flash-attn --no-build-isolation
+      ```
+    </Note>
+  </Step>
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/microsoft/VibeVoice.git
+    cd VibeVoice
+    ```
+  </Step>
 
-## Next steps
+  <Step title="Install the package">
+    <CodeGroup>
+      ```bash ASR
+      # Base install — includes all ASR dependencies
+      pip install -e .
+      ```
+      ```bash Realtime TTS
+      # Streaming TTS extras pin transformers==4.51.3 for compatibility
+      pip install -e .[streamingtts]
+      ```
+    </CodeGroup>
 
-Now that you have your docs running, explore these key features:
+    <Tip>
+      The `[streamingtts]` extra pins `transformers==4.51.3`. If you plan to use both ASR and Realtime TTS in the same environment, install the base package first and check compatibility before adding the extra.
+    </Tip>
+  </Step>
+</Steps>
+
+---
+
+## Try VibeVoice
+
+<Tabs>
+  <Tab title="ASR — Speech Recognition">
+    VibeVoice-ASR (7B) transcribes up to 60 minutes of audio in a single pass, producing structured output with speaker labels, timestamps, and content.
+
+    <Steps>
+      <Step title="Install ffmpeg (required for the demo)">
+        ```bash
+        apt update && apt install ffmpeg -y
+        ```
+      </Step>
+
+      <Step title="Run the Gradio demo">
+        This launches a browser-based interface where you can upload audio files and inspect rich transcriptions.
+
+        ```bash
+        python demo/vibevoice_asr_gradio_demo.py \
+          --model_path microsoft/VibeVoice-ASR \
+          --share
+        ```
+
+        The `--share` flag generates a public Gradio URL so you can access the demo from any browser, including outside the Docker container.
+
+        <Note>
+          The model weights (~7B parameters) are downloaded from Hugging Face on first run. Ensure you have sufficient disk space and a stable internet connection.
+        </Note>
+      </Step>
+
+      <Step title="Run inference directly from an audio file">
+        Skip the UI and transcribe a file from the command line:
+
+        ```bash
+        python demo/vibevoice_asr_inference_from_file.py \
+          --model_path microsoft/VibeVoice-ASR \
+          --audio_files /path/to/your/audio.wav
+        ```
+
+        The output is a structured transcription containing who spoke, when, and what was said.
+      </Step>
+    </Steps>
+
+    **What VibeVoice-ASR produces:**
+
+    | Field | Description |
+    |---|---|
+    | Who | Speaker label for each segment |
+    | When | Start and end timestamps |
+    | What | Transcribed text content |
+
+    The model supports over 50 languages natively — no explicit language setting required. You can also supply custom hotwords to improve accuracy on domain-specific terms.
+
+    <Warning>
+      VibeVoice-ASR is intended for research and development only. Do not deploy in production without further testing. Always disclose when content was generated or processed by AI.
+    </Warning>
+  </Tab>
+
+  <Tab title="Realtime TTS — Streaming Synthesis">
+    VibeVoice-Realtime-0.5B is a lightweight (0.5B parameter) TTS model with ~200 ms first-audio latency and streaming text input support.
+
+    <Steps>
+      <Step title="Launch the real-time WebSocket demo">
+        ```bash
+        python demo/vibevoice_realtime_demo.py \
+          --model_path microsoft/VibeVoice-Realtime-0.5B
+        ```
+
+        <Note>
+          NVIDIA T4 and Mac M4 Pro achieve real-time performance in testing. Weaker devices may require speed optimizations. Network latency can add to the perceived time before audio playback begins, beyond the ~200 ms generation latency.
+        </Note>
+
+        Alternatively, try the hosted notebook without any local setup:
+
+        [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/microsoft/VibeVoice/blob/main/demo/vibevoice_realtime_colab.ipynb)
+      </Step>
+
+      <Step title="Run inference from a text file">
+        Example text files are provided under `demo/text_examples/`:
+
+        ```bash
+        python demo/realtime_model_inference_from_file.py \
+          --model_path microsoft/VibeVoice-Realtime-0.5B \
+          --txt_path demo/text_examples/1p_vibevoice.txt \
+          --speaker_name Carter
+        ```
+      </Step>
+
+      <Step title="(Optional) Download experimental multilingual voices">
+        Nine additional languages are available for exploration: German, French, Italian, Japanese, Korean, Dutch, Polish, Portuguese, and Spanish.
+
+        ```bash
+        bash demo/download_experimental_voices.sh
+        ```
+
+        <Warning>
+          Multilingual voices have not been extensively tested. The model is primarily built for English; other languages may produce unpredictable results. Use with caution.
+        </Warning>
+      </Step>
+    </Steps>
+
+    **Key specs:**
+
+    | Property | Value |
+    |---|---|
+    | Parameters | 0.5B |
+    | First audio latency | ~200 ms (hardware dependent) |
+    | Max generation length | ~10 minutes (8k context window) |
+    | Speakers | Single speaker (English) |
+    | Frame rate | 7.5 Hz acoustic tokenizer |
+
+    <Warning>
+      VibeVoice-Realtime is intended for research and development only. High-quality synthetic speech can be misused for impersonation or disinformation. Always disclose AI-generated content and comply with applicable laws.
+    </Warning>
+  </Tab>
+</Tabs>
+
+---
+
+## Next Steps
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="VibeVoice-ASR" icon="microphone" href="/models/vibevoice-asr">
+    Deep dive into long-form speech recognition: supported languages, hotwords, finetuning with LoRA, and vLLM inference.
+  </Card>
+  <Card title="VibeVoice-Realtime" icon="waveform" href="/models/vibevoice-realtime">
+    Learn about streaming TTS architecture, available speakers, and building real-time speech services.
+  </Card>
+  <Card title="VibeVoice-TTS" icon="volume" href="/models/vibevoice-tts">
+    Explore the long-form multi-speaker TTS model (1.5B) for generating up to 90-minute conversational audio.
+  </Card>
+  <Card title="Hugging Face Collection" icon="cube" href="https://huggingface.co/collections/microsoft/vibevoice-68a2ef24a875c44be47b034f">
+    Browse all VibeVoice model weights and try them directly on Hugging Face.
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

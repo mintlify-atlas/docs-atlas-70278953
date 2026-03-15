@@ -1,0 +1,165 @@
+---
+title: 'Installation'
+description: 'Set up VibeVoice on your machine using the NVIDIA Deep Learning Container or a local Python environment.'
+---
+
+## Prerequisites
+
+<Warning>
+VibeVoice requires a CUDA-capable NVIDIA GPU. CPU-only environments are not supported. Python 3.9 or later is required.
+</Warning>
+
+| Requirement | Minimum version |
+|---|---|
+| Python | 3.9+ |
+| CUDA GPU | Required (NVIDIA) |
+| Git | Any recent version |
+| Docker | Recommended (see below) |
+
+## Recommended setup: NVIDIA Deep Learning Container
+
+Using the NVIDIA PyTorch container is the recommended approach because it provides a pre-configured CUDA environment, cuDNN, and Flash Attention — avoiding version conflicts between CUDA, PyTorch, and system libraries.
+
+Verified container versions: **24.07 through 25.12**. Earlier versions may also work.
+
+<Tabs>
+  <Tab title="VibeVoice-ASR">
+
+<Steps>
+
+<Step title="Launch the Docker container">
+
+<CodeGroup>
+
+```bash Latest verified (25.12)
+sudo docker run --privileged --net=host --ipc=host \
+  --ulimit memlock=-1:-1 --ulimit stack=-1:-1 \
+  --gpus all --rm -it \
+  nvcr.io/nvidia/pytorch:25.12-py3
+```
+
+```bash Stable (24.07)
+sudo docker run --privileged --net=host --ipc=host \
+  --ulimit memlock=-1:-1 --ulimit stack=-1:-1 \
+  --gpus all --rm -it \
+  nvcr.io/nvidia/pytorch:24.07-py3
+```
+
+</CodeGroup>
+
+<Note>
+If Flash Attention is not included in your Docker environment, install it manually for improved performance:
+
+```bash
+pip install flash-attn --no-build-isolation
+```
+
+See the [flash-attention repository](https://github.com/Dao-AILab/flash-attention) for full installation instructions.
+</Note>
+
+</Step>
+
+<Step title="Clone the repository">
+
+```bash
+git clone https://github.com/microsoft/VibeVoice.git
+cd VibeVoice
+```
+
+</Step>
+
+<Step title="Install the package">
+
+```bash
+pip install -e .
+```
+
+This installs all base dependencies and registers the vLLM plugin entry point automatically.
+
+</Step>
+
+</Steps>
+
+  </Tab>
+  <Tab title="VibeVoice-Realtime">
+
+<Steps>
+
+<Step title="Launch the Docker container">
+
+<CodeGroup>
+
+```bash Recommended (24.07)
+sudo docker run --privileged --net=host --ipc=host \
+  --ulimit memlock=-1:-1 --ulimit stack=-1:-1 \
+  --gpus all --rm -it \
+  nvcr.io/nvidia/pytorch:24.07-py3
+```
+
+```bash Later version (24.10 / 24.12)
+sudo docker run --privileged --net=host --ipc=host \
+  --ulimit memlock=-1:-1 --ulimit stack=-1:-1 \
+  --gpus all --rm -it \
+  nvcr.io/nvidia/pytorch:24.12-py3
+```
+
+</CodeGroup>
+
+<Note>
+Verified container versions for VibeVoice-Realtime are **24.07, 24.10, and 24.12**. Later versions are also compatible.
+</Note>
+
+</Step>
+
+<Step title="Clone the repository">
+
+```bash
+git clone https://github.com/microsoft/VibeVoice.git
+cd VibeVoice
+```
+
+</Step>
+
+<Step title="Install with the streaming TTS extras">
+
+<Warning>
+VibeVoice-Realtime requires a different dependency set from the base install. Use the `streamingtts` extra, which pins `transformers==4.51.3`.
+</Warning>
+
+```bash
+pip install -e .[streamingtts]
+```
+
+</Step>
+
+</Steps>
+
+  </Tab>
+</Tabs>
+
+## Dependencies overview
+
+The following core packages are installed with `pip install -e .`:
+
+| Package | Notes |
+|---|---|
+| `torch` | PyTorch (GPU support provided by the container) |
+| `transformers>=4.51.3,<5.0.0` | Hugging Face Transformers |
+| `accelerate` | Multi-GPU / mixed-precision utilities |
+| `diffusers` | Diffusion model components |
+| `gradio` | Gradio demo UI |
+| `librosa` | Audio loading and processing |
+| `numba>=0.57.0` / `llvmlite>=0.40.0` | JIT acceleration for audio ops |
+| `av`, `pydub` | Audio/video container decoding |
+| `fastapi`, `uvicorn[standard]` | REST API server |
+| `aiortc` | WebRTC for real-time streaming |
+
+The `streamingtts` optional extra pins `transformers==4.51.3` to ensure compatibility with the VibeVoice-Realtime-0.5B streaming architecture.
+
+The vLLM plugin is registered automatically via the `vllm.general_plugins` entry point when you install the package — no manual configuration is required.
+
+## Transformers integration
+
+<Note>
+As of **Hugging Face Transformers v5.3.0** (released 2026-03-06), VibeVoice-ASR is available natively through the Transformers library. You can use the model directly with the standard Transformers `pipeline` and `AutoModel` APIs without installing the full VibeVoice package, if you only need ASR inference in an existing Transformers project.
+</Note>

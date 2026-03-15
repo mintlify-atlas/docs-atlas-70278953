@@ -1,0 +1,101 @@
+---
+title: VibeVoice-TTS-1.5B
+description: A 1.5B-parameter long-form multi-speaker TTS model capable of generating up to 90 minutes of expressive conversational audio with up to 4 distinct speakers.
+---
+
+**VibeVoice-TTS-1.5B** is a long-form, multi-speaker text-to-speech model designed for generating expressive conversational audio — podcasts, dialogues, and narration — from text. It can synthesize speech up to **90 minutes** long with up to **4 distinct speakers** in a single pass.
+
+<CardGroup cols={2}>
+  <Card title="Hugging Face" icon="circle-nodes" href="https://huggingface.co/microsoft/VibeVoice-1.5B">
+    Download model weights
+  </Card>
+  <Card title="Technical Report" icon="file-lines" href="https://arxiv.org/pdf/2508.19205">
+    ArXiv paper with architecture and evaluation details
+  </Card>
+</CardGroup>
+
+<Warning>
+  The VibeVoice-TTS inference code has been removed from this repository due to instances of misuse inconsistent with the stated research intent. Weights remain available on Hugging Face for inspection, but the code needed to run inference is currently disabled. See the [responsible use note](#responsible-use) below.
+</Warning>
+
+## What It Does
+
+VibeVoice-TTS-1.5B synthesizes long-form audio from a text transcript, supporting:
+
+- Multi-speaker dialogues with per-speaker voice prompts
+- Single-speaker narration up to 90 minutes
+- Expressive, natural-sounding prosody that reflects conversational dynamics
+- English, Chinese, and other languages (cross-lingual transfer is an emergent capability)
+
+## Key Features
+
+<AccordionGroup>
+  <Accordion title="90-Minute Long-Form Generation">
+    The model operates on a **64K token context window**, enabling single-pass synthesis of up to approximately 90 minutes of audio. Speaker identity and semantic coherence are maintained throughout, unlike chunk-based approaches that must re-condition at each boundary.
+  </Accordion>
+  <Accordion title="Up to 4 Distinct Speakers">
+    A single inference call can produce a multi-speaker conversation with up to **4 distinct speakers**, each with consistent voice characteristics across the full generation. Natural turn-taking emerges from the text structure.
+  </Accordion>
+  <Accordion title="Expressive Speech">
+    The next-token diffusion architecture generates continuous acoustic latents rather than discrete tokens, enabling the model to capture fine-grained prosody, emotional nuance, and conversational dynamics that discrete codebook approaches tend to flatten.
+  </Accordion>
+  <Accordion title="Multilingual Support">
+    Primary training languages are English and Chinese. Cross-lingual transfer — including accent preservation when switching languages — is an emergent capability that has not been specifically optimized and may be unstable. Repeated sampling can improve results.
+  </Accordion>
+</AccordionGroup>
+
+## Architecture
+
+VibeVoice-TTS uses a **next-token diffusion** framework with three components working together:
+
+### LLM Backbone (Qwen2.5-1.5B)
+The language model understands the input text, speaker turn structure, and dialogue context. It produces latent representations that condition all downstream generation.
+
+### Continuous Speech Tokenizers at 7.5 Hz
+Two tokenizers encode the acoustic conditioning signal from reference audio:
+
+| Tokenizer | Latent Dimension | Role |
+|---|---|---|
+| Acoustic tokenizer | 64-dim | Captures waveform fidelity and speaker timbre |
+| Semantic tokenizer | 128-dim | Captures linguistic content and speaker identity |
+
+Both operate at **7.5 Hz** — approximately one frame per 133 ms of audio. This ultra-low frame rate is what makes 90-minute generation feasible: the entire sequence fits in the 64K context window without exhausting memory or compute.
+
+### Diffusion Head
+A lightweight transformer diffusion head (4 layers, DDPM with cosine schedule, 20 inference steps) generates the final continuous acoustic latents from the LLM conditioning. These latents are decoded by the acoustic tokenizer's decoder (a neural vocoder) back into a waveform.
+
+This diffusion-based generation avoids quantization artifacts from discrete tokenization and produces higher fidelity audio, especially for expressive and prosodically complex speech.
+
+## Available Models
+
+| Variant | Context Length | Max Generation | Weights |
+|---|---|---|---|
+| VibeVoice-1.5B | 64K tokens | ~90 min | [Hugging Face](https://huggingface.co/microsoft/VibeVoice-1.5B) |
+| VibeVoice-Large | 32K tokens | ~45 min | Disabled |
+
+## Responsible Use
+
+<Warning>
+  **Code removed due to misuse (2025-09-05).** VibeVoice-TTS was open-sourced as a research framework to advance the speech synthesis community. After release, instances were discovered where the tool was used in ways inconsistent with its stated research intent. As responsible use of AI is a core principle at Microsoft, the TTS inference code has been removed from the repository.
+
+  The model weights on Hugging Face remain available for research inspection. This model is intended for research and development purposes only — **not** for commercial or real-world deployment without further testing and safeguards.
+</Warning>
+
+High-quality synthetic speech carries deepfake and disinformation risks. Any use of these model weights must comply with all applicable laws and regulations. It is best practice to disclose when sharing AI-generated audio content.
+
+## Resources
+
+<CardGroup cols={2}>
+  <Card title="Hugging Face Model" icon="circle-nodes" href="https://huggingface.co/microsoft/VibeVoice-1.5B">
+    Weights and model card
+  </Card>
+  <Card title="Technical Report" icon="file-lines" href="https://arxiv.org/pdf/2508.19205">
+    Full architecture and evaluation results
+  </Card>
+  <Card title="Models Overview" icon="table" href="/models/overview">
+    Compare all VibeVoice models
+  </Card>
+  <Card title="VibeVoice-Realtime" icon="bolt" href="/models/vibevoice-realtime">
+    Real-time streaming TTS alternative
+  </Card>
+</CardGroup>

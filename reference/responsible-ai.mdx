@@ -1,0 +1,135 @@
+---
+title: Responsible AI
+description: Intended use, known risks, limitations, and user responsibilities for VibeVoice models.
+---
+
+<Warning>
+  VibeVoice is intended for **research and development only**. Microsoft does not recommend using VibeVoice in commercial or real-world applications without further testing and evaluation. The VibeVoice-TTS code was removed from this repository on **2025-09-05** due to misuse concerns.
+</Warning>
+
+Microsoft is committed to the responsible development and deployment of AI systems. This page describes the intended use, known risks, limitations, and responsibilities that apply to all VibeVoice models.
+
+---
+
+## Intended Use
+
+VibeVoice models are designed for **research and development** in speech synthesis and automatic speech recognition. Specific intended uses include:
+
+- Academic research into neural TTS, streaming speech generation, and long-form ASR
+- Prototyping and experimentation with voice AI pipelines
+- Evaluation of voice model capabilities in controlled research environments
+- Fine-tuning for domain-specific speech recognition tasks
+
+<Note>
+  These models are **not** intended for use in production systems, customer-facing applications, or any context where errors in speech synthesis or recognition could cause harm.
+</Note>
+
+---
+
+## VibeVoice TTS Removal Notice
+
+On **2025-09-05**, Microsoft removed the VibeVoice-TTS code from this repository.
+
+VibeVoice was released as an open-source research framework intended to advance collaboration in the speech synthesis community. After release, instances were discovered where the tool was used in ways inconsistent with the stated intent. Because responsible use of AI is one of Microsoft's guiding principles, the TTS code has been removed.
+
+The [VibeVoice-TTS Hugging Face model card](https://huggingface.co/microsoft/VibeVoice-1.5B) remains available but the associated inference code is no longer distributed in this repository.
+
+---
+
+## Risks
+
+<AccordionGroup>
+  <Accordion title="Deepfakes and synthetic media">
+    High-quality synthetic speech can be used to create convincing fake audio recordings that misrepresent real individuals. This poses risks including:
+    
+    - Impersonation of public figures or private individuals
+    - Creation of misleading audio evidence
+    - Bypassing voice-based authentication systems
+    
+    Users must not use VibeVoice to generate speech that is falsely attributed to a real person without their explicit consent.
+  </Accordion>
+
+  <Accordion title="Disinformation and fraud">
+    Synthetic speech can be weaponized for social engineering attacks, phone fraud ("vishing"), and the amplification of disinformation campaigns. Users are expected to:
+    
+    - Ensure transcripts and scripts used as input are accurate and lawful
+    - Not deploy generated audio in misleading or deceptive contexts
+    - Disclose to audiences when content has been AI-generated
+  </Accordion>
+
+  <Accordion title="Bias and fairness">
+    VibeVoice inherits any biases, errors, or omissions present in its base model, **Qwen2.5**. These may manifest as:
+    
+    - Reduced transcription accuracy for underrepresented accents or dialects
+    - Uneven synthesis quality across languages
+    - Reinforcement of existing stereotypes in voice characteristics
+    
+    Microsoft has not conducted comprehensive bias evaluations across all possible use cases.
+  </Accordion>
+
+  <Accordion title="Output quality and reliability">
+    Despite optimization efforts, VibeVoice may produce outputs that are unexpected, inaccurate, or of variable quality. Outputs should not be treated as ground truth without human review.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Limitations
+
+### VibeVoice-Realtime (Streaming TTS)
+
+- **Language**: Primarily optimized for English. Experimental multilingual voices exist for nine additional languages (DE, FR, IT, JP, KR, NL, PL, PT, ES), but quality and consistency are not guaranteed outside English.
+- **Speaker**: Designed for single-speaker synthesis. Multi-speaker scenarios are not supported in the realtime model.
+- **Audio conditions**: Background music and significant noise in the voice prompt are not supported and will degrade output quality.
+- **Short inputs**: Very short text inputs (fewer than ~5 tokens) may produce unstable or degraded speech output.
+- **Maximum length**: Robust long-form generation up to approximately 10 minutes; reliability may decrease beyond this.
+
+### VibeVoice-ASR
+
+- **Model inheritance**: The ASR model is built on the Qwen2.5 base model and inherits its biases and limitations, including potential accuracy disparities across demographic groups, languages, and speaking styles.
+- **Language coverage**: Supports over 50 languages, but accuracy varies significantly. See the [supported languages list](https://github.com/microsoft/VibeVoice/blob/main/docs/vibevoice-asr.md#language-distribution) for per-language details.
+- **Audio quality**: Performance degrades with heavily overlapping speech, low-quality recordings, or non-standard audio formats.
+
+### VibeVoice-TTS (removed)
+
+- The TTS model code has been removed from this repository. See the [TTS removal notice](#vibevoice-tts-removal-notice) above.
+
+---
+
+## User Responsibilities
+
+By using VibeVoice models, you agree to:
+
+1. **Lawful use**: Use the models only in a manner that complies with all applicable laws and regulations in your jurisdiction, including laws concerning privacy, consent, impersonation, and fraud.
+
+2. **Disclosure**: When sharing or publishing AI-generated audio or transcriptions, clearly disclose that the content was produced by an AI system. This applies to both TTS output and ASR-derived text.
+
+3. **Consent**: Obtain explicit consent from individuals before using their voice or likeness as a reference for voice synthesis.
+
+4. **Accuracy verification**: Independently verify the accuracy of ASR transcriptions before relying on them for consequential decisions.
+
+5. **Research context**: Deploy these models only within research and development environments, not in production systems without independent safety testing.
+
+<Note>
+  It is best practice to disclose the use of AI when sharing AI-generated content. Users are expected to deploy VibeVoice in full compliance with all applicable laws and regulations.
+</Note>
+
+---
+
+## Microsoft Responsible AI Principles
+
+Microsoft develops AI guided by six principles: **Fairness, Reliability and Safety, Privacy and Security, Inclusiveness, Transparency, and Accountability**. VibeVoice is developed under these principles.
+
+For more information on Microsoft's approach to responsible AI, visit [microsoft.com/responsibleai](https://www.microsoft.com/responsibleai).
+
+---
+
+## Reporting Security Issues
+
+<Warning>
+  Do not report security vulnerabilities through public GitHub issues.
+</Warning>
+
+For security reporting information, contact details, and Microsoft's disclosure policies, review the guidance at [https://aka.ms/SECURITY.md](https://aka.ms/SECURITY.md).
+
+Microsoft takes the security of all source code repositories seriously and will respond promptly to validated security reports.

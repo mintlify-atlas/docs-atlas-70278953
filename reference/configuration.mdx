@@ -1,0 +1,369 @@
+---
+title: Configuration Reference
+description: Complete reference for all VibeVoice configuration classes, vLLM environment variables, and LoRA fine-tuning arguments.
+---
+
+VibeVoice uses a hierarchical configuration system built on top of HuggingFace `PretrainedConfig`. Each top-level config composes several sub-configs that correspond to individual model components.
+
+---
+
+## `VibeVoiceStreamingConfig`
+
+`model_type: vibevoice_streaming`
+
+Top-level configuration for `VibeVoiceStreamingForConditionalGenerationInference`. Composes three sub-configs.
+
+```python
+from vibevoice import VibeVoiceStreamingConfig
+
+config = VibeVoiceStreamingConfig(
+    tts_backbone_num_hidden_layers=20,
+)
+```
+
+<ParamField path="acoustic_tokenizer_config" type="VibeVoiceAcousticTokenizerConfig | dict | None" default="VibeVoiceAcousticTokenizerConfig()">
+  Configuration for the acoustic VAE tokenizer sub-model. Pass a dict with `model_type: vibevoice_acoustic_tokenizer` or an instantiated config. Defaults to `VibeVoiceAcousticTokenizerConfig()` when `None`.
+</ParamField>
+
+<ParamField path="decoder_config" type="Qwen2Config | dict | None" default="Qwen2Config()">
+  Configuration for the Qwen2-based decoder LM backbone. When passing a dict, `model_type` must be `"qwen2"`. Only the Qwen2 architecture is supported.
+</ParamField>
+
+<ParamField path="diffusion_head_config" type="VibeVoiceDiffusionHeadConfig | dict | None" default="VibeVoiceDiffusionHeadConfig()">
+  Configuration for the DDPM diffusion prediction head. Pass a dict with `model_type: vibevoice_diffusion_head` or an instantiated config.
+</ParamField>
+
+<ParamField path="tts_backbone_num_hidden_layers" type="int" default="20">
+  Number of upper decoder Transformer layers used for combined text-and-speech generation. The remaining lower layers are used for text-only encoding. Must be ≤ `decoder_config.num_hidden_layers`.
+</ParamField>
+
+**Derived attributes** (read-only, set from sub-configs during `__init__`):
+
+| Attribute | Source | Default |
+|---|---|---|
+| `acoustic_vae_dim` | `acoustic_tokenizer_config.vae_dim` | `64` |
+| `num_hidden_layers` | `decoder_config.num_hidden_layers` | — |
+
+---
+
+## `VibeVoiceConfig`
+
+`model_type: vibevoice`
+
+Configuration for the full VibeVoice TTS model (non-streaming). Composes four sub-configs.
+
+<ParamField path="acoustic_tokenizer_config" type="VibeVoiceAcousticTokenizerConfig | dict | None" default="VibeVoiceAcousticTokenizerConfig()">
+  Acoustic VAE tokenizer configuration.
+</ParamField>
+
+<ParamField path="semantic_tokenizer_config" type="VibeVoiceSemanticTokenizerConfig | dict | None" default="VibeVoiceSemanticTokenizerConfig()">
+  Semantic VAE tokenizer configuration.
+</ParamField>
+
+<ParamField path="decoder_config" type="Qwen2Config | dict | None" default="Qwen2Config()">
+  Decoder LM configuration. Only `model_type: qwen2` is supported.
+</ParamField>
+
+<ParamField path="diffusion_head_config" type="VibeVoiceDiffusionHeadConfig | dict | None" default="VibeVoiceDiffusionHeadConfig()">
+  Diffusion head configuration.
+</ParamField>
+
+**Derived attributes**:
+
+| Attribute | Source | Default |
+|---|---|---|
+| `acoustic_vae_dim` | `acoustic_tokenizer_config.vae_dim` | `64` |
+| `semantic_vae_dim` | `semantic_tokenizer_config.vae_dim` | `128` |
+
+---
+
+## `VibeVoiceAcousticTokenizerConfig`
+
+`model_type: vibevoice_acoustic_tokenizer`
+
+Configuration for the causal acoustic VAE tokenizer that converts waveforms to/from continuous latent vectors at 7.5 Hz.
+
+<ParamField path="channels" type="int" default="1">
+  Number of audio channels (1 = mono).
+</ParamField>
+
+<ParamField path="corpus_normalize" type="float" default="0.0">
+  Corpus-level normalization factor applied during training.
+</ParamField>
+
+<ParamField path="causal" type="bool" default="True">
+  Whether the encoder and decoder use causal (streaming-compatible) convolutions.
+</ParamField>
+
+<ParamField path="vae_dim" type="int" default="64">
+  Dimensionality of the acoustic latent space. This value is also propagated to `VibeVoiceStreamingConfig.acoustic_vae_dim`.
+</ParamField>
+
+<ParamField path="fix_std" type="float" default="0.5">
+  Fixed standard deviation used in the VAE posterior when `std_dist_type` is not `"none"`.
+</ParamField>
+
+<ParamField path="std_dist_type" type="str" default="'gaussian'">
+  Distribution type for the VAE latent. Options: `"gaussian"`, `"none"`.
+</ParamField>
+
+<ParamField path="mixer_layer" type="str" default="'depthwise_conv'">
+  Type of mixing layer used in encoder/decoder blocks.
+</ParamField>
+
+<ParamField path="conv_norm" type="str" default="'none'">
+  Normalization applied to convolutional layers.
+</ParamField>
+
+<ParamField path="pad_mode" type="str" default="'constant'">
+  Padding mode for convolutional layers.
+</ParamField>
+
+<ParamField path="disable_last_norm" type="bool" default="True">
+  Whether to disable the final normalization layer.
+</ParamField>
+
+<ParamField path="layernorm" type="str" default="'RMSNorm'">
+  Layer normalization type. Options: `"RMSNorm"`, `"LayerNorm"`.
+</ParamField>
+
+<ParamField path="layernorm_eps" type="float" default="1e-5">
+  Epsilon for numerical stability in layer normalization.
+</ParamField>
+
+<ParamField path="layernorm_elementwise_affine" type="bool" default="True">
+  Whether layer normalization has learnable affine parameters.
+</ParamField>
+
+<ParamField path="conv_bias" type="bool" default="True">
+  Whether convolutional layers include bias terms.
+</ParamField>
+
+<ParamField path="layer_scale_init_value" type="float" default="1e-6">
+  Initial value for layer scale parameters.
+</ParamField>
+
+<ParamField path="weight_init_value" type="float" default="1e-2">
+  Initial value for weight initialization.
+</ParamField>
+
+<ParamField path="encoder_n_filters" type="int" default="32">
+  Base number of filters in the encoder.
+</ParamField>
+
+<ParamField path="encoder_ratios" type="List[int]" default="[8, 5, 5, 4, 2, 2]">
+  Downsampling ratios applied by each encoder stage. The product of all ratios equals the total compression ratio.
+</ParamField>
+
+<ParamField path="encoder_depths" type="str" default="'3-3-3-3-3-3-8'">
+  Dash-separated string specifying the number of blocks at each encoder stage.
+</ParamField>
+
+<ParamField path="decoder_n_filters" type="int" default="32">
+  Base number of filters in the decoder.
+</ParamField>
+
+<ParamField path="decoder_ratios" type="List[int] | None" default="None">
+  Upsampling ratios per decoder stage. When `None`, mirrors `encoder_ratios`.
+</ParamField>
+
+<ParamField path="decoder_depths" type="str | None" default="None">
+  Block depths per decoder stage. When `None`, mirrors `encoder_depths`.
+</ParamField>
+
+---
+
+## `VibeVoiceSemanticTokenizerConfig`
+
+`model_type: vibevoice_semantic_tokenizer`
+
+Configuration for the semantic VAE tokenizer (encoder-only; no decoder). Shares most fields with `VibeVoiceAcousticTokenizerConfig` except there are no decoder-specific parameters.
+
+<ParamField path="vae_dim" type="int" default="64">
+  Dimensionality of the semantic latent space. The semantic VAE dimension is propagated to `VibeVoiceConfig.semantic_vae_dim` (default `128` at config level).
+</ParamField>
+
+<ParamField path="fix_std" type="float" default="0">
+  Fixed standard deviation. Default `0` (effectively disabled).
+</ParamField>
+
+<ParamField path="std_dist_type" type="str" default="'none'">
+  Distribution type. Default `"none"` disables stochastic sampling.
+</ParamField>
+
+All other parameters (`channels`, `causal`, `mixer_layer`, `conv_norm`, `pad_mode`, `layernorm`, `encoder_n_filters`, `encoder_ratios`, `encoder_depths`, etc.) have the same defaults and semantics as `VibeVoiceAcousticTokenizerConfig`.
+
+---
+
+## `VibeVoiceDiffusionHeadConfig`
+
+`model_type: vibevoice_diffusion_head`
+
+Configuration for the DDPM-based acoustic latent prediction head.
+
+<ParamField path="hidden_size" type="int" default="768">
+  Hidden dimension of the diffusion head Transformer layers.
+</ParamField>
+
+<ParamField path="head_layers" type="int" default="4">
+  Number of Transformer layers in the prediction head.
+</ParamField>
+
+<ParamField path="head_ffn_ratio" type="float" default="3.0">
+  Ratio of the FFN intermediate dimension to `hidden_size`.
+</ParamField>
+
+<ParamField path="rms_norm_eps" type="float" default="1e-5">
+  Epsilon for RMS normalization layers.
+</ParamField>
+
+<ParamField path="latent_size" type="int" default="64">
+  Dimensionality of the diffusion noise latent. Should match `acoustic_vae_dim`.
+</ParamField>
+
+<ParamField path="speech_vae_dim" type="int | None" default="None">
+  Override for the acoustic VAE dimension. When `None`, falls back to `latent_size`.
+</ParamField>
+
+<ParamField path="prediction_type" type="str" default="'v_prediction'">
+  Diffusion prediction parameterization. `"v_prediction"` (velocity prediction) or `"epsilon"` (noise prediction).
+</ParamField>
+
+<ParamField path="diffusion_type" type="str" default="'ddpm'">
+  Diffusion scheduler type. Currently only `"ddpm"` is supported.
+</ParamField>
+
+<ParamField path="ddpm_num_steps" type="int" default="1000">
+  Total number of training diffusion steps (the full noise schedule length).
+</ParamField>
+
+<ParamField path="ddpm_num_inference_steps" type="int" default="20">
+  Number of denoising steps at inference time. Lower values are faster but may reduce quality. Can be overridden at runtime via `model.set_ddpm_inference_steps()`.
+</ParamField>
+
+<ParamField path="ddpm_beta_schedule" type="str" default="'cosine'">
+  Noise schedule type for the DDPM scheduler. Options: `"cosine"`, `"linear"`.
+</ParamField>
+
+<ParamField path="ddpm_batch_mul" type="int" default="4">
+  Batch multiplier used during diffusion training (affects how many noisy samples are created per example).
+</ParamField>
+
+---
+
+## `VibeVoiceTokenizerProcessor` settings
+
+The audio processor is configured via `preprocessor_config.json` when loaded through `VibeVoiceStreamingProcessor.from_pretrained`. The relevant fields are:
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `sampling_rate` | int | `24000` | Expected audio sample rate (Hz) |
+| `normalize_audio` | bool | `True` | Apply dB FS normalization |
+| `target_dB_FS` | float | `-25` | Target loudness for normalization |
+| `eps` | float | `1e-6` | Numerical stability epsilon |
+| `speech_tok_compress_ratio` | int | `3200` | Samples per acoustic VAE token |
+| `db_normalize` | bool | `True` | dB normalize in `VibeVoiceStreamingProcessor` |
+
+---
+
+## vLLM Deployment Environment Variables
+
+These variables are set when launching the vLLM Docker container.
+
+<ParamField path="VIBEVOICE_FFMPEG_MAX_CONCURRENCY" type="int" default="64">
+  Maximum number of concurrent FFmpeg subprocesses for audio decoding. Each in-flight request that requires audio loading will consume one slot. Increase for CPU-rich deployments, reduce to avoid resource exhaustion.
+
+  ```bash
+  -e VIBEVOICE_FFMPEG_MAX_CONCURRENCY=128
+  ```
+</ParamField>
+
+<ParamField path="PYTORCH_ALLOC_CONF" type="string" default="expandable_segments:True">
+  Passed directly to the PyTorch CUDA memory allocator. `expandable_segments:True` reduces memory fragmentation during long-audio inference, where sequence lengths vary widely.
+
+  ```bash
+  -e PYTORCH_ALLOC_CONF=expandable_segments:True
+  ```
+</ParamField>
+
+---
+
+## LoRA Fine-tuning Arguments
+
+The `finetuning-asr/lora_finetune.py` script extends HuggingFace `TrainingArguments` with VibeVoice-specific flags. All standard `TrainingArguments` options apply.
+
+### VibeVoice-specific parameters
+
+<ParamField path="--model_path" type="str" required>
+  Base model path or Hugging Face Hub ID. Example: `microsoft/VibeVoice-ASR`.
+</ParamField>
+
+<ParamField path="--data_dir" type="str" required>
+  Directory containing paired `.mp3`/`.json` training samples.
+</ParamField>
+
+<ParamField path="--lora_r" type="int" default="16">
+  LoRA rank. Lower values reduce the number of trainable parameters; higher values increase expressiveness.
+</ParamField>
+
+<ParamField path="--lora_alpha" type="int" default="32">
+  LoRA scaling factor. A value of `2 × lora_r` is typical.
+</ParamField>
+
+<ParamField path="--lora_dropout" type="float" default="0.05">
+  Dropout rate applied within LoRA layers.
+</ParamField>
+
+<ParamField path="--use_customized_context" type="bool" default="True">
+  When enabled, the `customized_context` list from each JSON label file is included as additional context in the training prompt.
+</ParamField>
+
+<ParamField path="--max_audio_length" type="float | None" default="None">
+  Maximum audio duration in seconds. Training examples longer than this value are skipped.
+</ParamField>
+
+### Key inherited `TrainingArguments`
+
+<ParamField path="--num_train_epochs" type="int" default="3">
+  Number of training epochs.
+</ParamField>
+
+<ParamField path="--per_device_train_batch_size" type="int" default="1">
+  Batch size per GPU device. Due to variable-length audio, `1` is recommended.
+</ParamField>
+
+<ParamField path="--gradient_accumulation_steps" type="int" default="1">
+  Effective batch size = `per_device_train_batch_size × gradient_accumulation_steps × num_gpus`.
+</ParamField>
+
+<ParamField path="--learning_rate" type="float" default="1e-4">
+  Learning rate. A range of `1e-4` to `2e-4` is typical for LoRA fine-tuning.
+</ParamField>
+
+<ParamField path="--bf16" type="bool" default="False">
+  Enable bfloat16 training. Recommended on Ampere or newer GPUs.
+</ParamField>
+
+<ParamField path="--gradient_checkpointing" type="bool" default="False">
+  Trade compute for memory by recomputing activations during the backward pass.
+</ParamField>
+
+### Training data JSON format
+
+```json
+{
+  "audio_duration": 351.73,
+  "audio_path": "0.mp3",
+  "segments": [
+    {
+      "speaker": 0,
+      "text": "Hey everyone, welcome back...",
+      "start": 0.0,
+      "end": 38.68
+    }
+  ],
+  "customized_context": ["ProductName", "SpeakerName"]
+}
+```
+
+`customized_context` is optional and used only when `--use_customized_context` is `True`.

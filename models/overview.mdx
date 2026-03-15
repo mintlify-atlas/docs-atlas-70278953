@@ -1,0 +1,70 @@
+---
+title: Models Overview
+description: Compare all VibeVoice models — ASR-7B, TTS-1.5B, and Realtime-0.5B — and choose the right one for your use case.
+---
+
+VibeVoice is a family of open-source frontier voice AI models covering automatic speech recognition (ASR) and text-to-speech (TTS). All models share a common architectural foundation built around continuous speech tokenizers and a next-token diffusion framework.
+
+## Model Comparison
+
+| Model | Task | Parameters | Context / Length | Key Capability | Availability |
+|---|---|---|---|---|---|
+| [VibeVoice-ASR-7B](/models/vibevoice-asr) | Speech Recognition | 7B | 64K tokens / 60 min | Long-form ASR, diarization, 50+ languages | [Hugging Face](https://huggingface.co/microsoft/VibeVoice-ASR) |
+| [VibeVoice-TTS-1.5B](/models/vibevoice-tts) | Text-to-Speech | 1.5B | 64K tokens / 90 min | Multi-speaker long-form generation | [Hugging Face](https://huggingface.co/microsoft/VibeVoice-1.5B) (inference disabled) |
+| [VibeVoice-Realtime-0.5B](/models/vibevoice-realtime) | Streaming TTS | 0.5B | 8K tokens / ~10 min | ~200 ms first-audio latency | [Hugging Face](https://huggingface.co/microsoft/VibeVoice-Realtime-0.5B) |
+
+## When to Use Each Model
+
+<CardGroup cols={3}>
+  <Card title="VibeVoice-ASR-7B" icon="microphone" href="/models/vibevoice-asr">
+    Use for transcribing long audio recordings — meetings, interviews, podcasts. Produces speaker-attributed, timestamped transcripts in 50+ languages with optional hotword customization.
+  </Card>
+  <Card title="VibeVoice-TTS-1.5B" icon="volume" href="/models/vibevoice-tts">
+    Use for generating long-form multi-speaker audio — podcasts, audiobooks, conversational dialogues with up to 4 distinct speakers in a single pass.
+  </Card>
+  <Card title="VibeVoice-Realtime-0.5B" icon="bolt" href="/models/vibevoice-realtime">
+    Use for real-time speech synthesis where latency matters — LLM voice interfaces, live narration, and streaming TTS services that need audio within ~200 ms of the first text token.
+  </Card>
+</CardGroup>
+
+## Architecture Overview
+
+### Next-Token Diffusion
+
+All VibeVoice generative models (TTS and Realtime) use a **next-token diffusion** framework. Rather than decoding discrete tokens one by one, the model combines two components:
+
+- **LLM backbone (Qwen2.5)** — understands textual context, dialogue structure, and speaker turns, producing latent representations that condition generation.
+- **Diffusion head** — takes those latent representations and generates high-fidelity continuous acoustic features through a diffusion process (DDPM with cosine schedule, 20 inference steps). This avoids the quality degradation that comes with discretizing speech into tokens.
+
+The result is audio that captures fine acoustic detail — expressiveness, prosody, and speaker timbre — while remaining coherent over long sequences.
+
+### Continuous Speech Tokenizers at 7.5 Hz
+
+VibeVoice uses two types of continuous speech tokenizers:
+
+| Tokenizer | Purpose | Used In |
+|---|---|---|
+| Acoustic tokenizer | Encodes and decodes raw waveform fidelity (VAE, 64-dim latent) | TTS-1.5B, Realtime-0.5B |
+| Semantic tokenizer | Encodes higher-level linguistic/speaker content (VAE, 128-dim latent) | TTS-1.5B, ASR-7B |
+
+Both tokenizers operate at an ultra-low frame rate of **7.5 Hz** — roughly one latent frame per 133 ms of audio. This dramatically reduces sequence length compared to typical 50–100 Hz representations, enabling the LLM backbone to attend over full hours of audio within its context window without running out of memory or compute budget.
+
+The Realtime-0.5B variant omits the semantic tokenizer entirely to reduce latency, relying solely on the acoustic tokenizer for its streaming use case.
+
+### ASR Architecture
+
+VibeVoice-ASR-7B follows a different path: it encodes audio through both the acoustic and semantic tokenizers, then feeds those representations into a Qwen2.5-7B decoder that autoregressively generates structured text (speaker labels, timestamps, and transcribed content). There is no diffusion head — generation is purely autoregressive over text tokens.
+
+## Model Pages
+
+<CardGroup cols={3}>
+  <Card title="VibeVoice-ASR-7B" icon="file-waveform" href="/models/vibevoice-asr">
+    Deep dive: architecture, evaluation benchmarks, 50+ language support, and usage guides.
+  </Card>
+  <Card title="VibeVoice-TTS-1.5B" icon="waveform-lines" href="/models/vibevoice-tts">
+    Deep dive: long-form multi-speaker generation, next-token diffusion architecture, and responsible use notes.
+  </Card>
+  <Card title="VibeVoice-Realtime-0.5B" icon="signal-stream" href="/models/vibevoice-realtime">
+    Deep dive: streaming design, benchmark results, available speakers, and limitations.
+  </Card>
+</CardGroup>
